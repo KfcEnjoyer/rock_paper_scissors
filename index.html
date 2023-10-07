@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Rock-Paper-Scissors Game</title>
+    <script src="https://cdn.jsdelivr.net/npm/web3@1.6.0/dist/web3.min.js"></script>
+    <script>
+        // Replace with your actual contract address and ABI
+        const contractAddress = '0x498c03C02a04de41b2000D2327bF8FB998B28a69';
+        const contractABI = [
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": true,
+				"internalType": "address",
+				"name": "player",
+				"type": "address"
+			},
+			{
+				"indexed": false,
+				"internalType": "enum RockPaperScissors.Move",
+				"name": "playerMove",
+				"type": "uint8"
+			},
+			{
+				"indexed": false,
+				"internalType": "enum RockPaperScissors.Move",
+				"name": "botMove",
+				"type": "uint8"
+			},
+			{
+				"indexed": false,
+				"internalType": "bool",
+				"name": "won",
+				"type": "bool"
+			},
+			{
+				"indexed": false,
+				"internalType": "uint256",
+				"name": "reward",
+				"type": "uint256"
+			}
+		],
+		"name": "GameResult",
+		"type": "event"
+	},
+	{
+		"inputs": [],
+		"name": "betAmount",
+		"outputs": [
+			{
+				"internalType": "uint256",
+				"name": "",
+				"type": "uint256"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "",
+				"type": "address"
+			},
+			{
+				"internalType": "uint256",
+				"name": "",
+				"type": "uint256"
+			}
+		],
+		"name": "gameHistory",
+		"outputs": [
+			{
+				"internalType": "enum RockPaperScissors.Move",
+				"name": "playerMove",
+				"type": "uint8"
+			},
+			{
+				"internalType": "enum RockPaperScissors.Move",
+				"name": "botMove",
+				"type": "uint8"
+			},
+			{
+				"internalType": "bool",
+				"name": "resolved",
+				"type": "bool"
+			},
+			{
+				"internalType": "uint256",
+				"name": "reward",
+				"type": "uint256"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "player",
+				"type": "address"
+			}
+		],
+		"name": "getGameCount",
+		"outputs": [
+			{
+				"internalType": "uint256",
+				"name": "",
+				"type": "uint256"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "uint8",
+				"name": "move",
+				"type": "uint8"
+			}
+		],
+		"name": "play",
+		"outputs": [],
+		"stateMutability": "payable",
+		"type": "function"
+	}
+];
+
+        let web3;
+        let contractInstance;
+        let userAccount;
+
+        async function loadWeb3() {
+            if (window.ethereum) {
+                web3 = new Web3(window.ethereum);
+                await window.ethereum.enable();
+                return true;
+            }
+            return false;
+        }
+
+        async function loadContract() {
+            contractInstance = new web3.eth.Contract(contractABI, contractAddress);
+        }
+
+        async function loadAccount() {
+            const accounts = await web3.eth.getAccounts();
+            userAccount = accounts[0];
+        }
+
+        async function getBalance() {
+            const balance = await web3.eth.getBalance(userAccount);
+            const balanceInBnb = web3.utils.fromWei(balance, 'ether');
+            document.getElementById('userBalance').textContent = `Balance: ${balanceInBnb} BNB`;
+        }
+
+        async function playGame(selectedMoveIndex) {
+    try {
+        const result = await contractInstance.methods.play(selectedMoveIndex).send({ from: userAccount, value: web3.utils.toWei('0.0001', 'ether') });
+        console.log('Transaction Result:', result);
+        
+        // After playing a game, load the game history
+        loadGameHistory();
+		updateGameHistory(selectedMoveIndex, botMove, result);
+    } catch (error) {
+        console.error('Error:', error);
+    }
+}
+
+// Function to load and display game history
+async function loadGameHistory() {
+    try {
+        const games = await contractInstance.methods.gameHistory(userAccount, 0).call();
+        const gameHistoryList = document.getElementById('gameHistoryList');
+
+        gameHistoryList.innerHTML = ''; // Clear the existing list
+
+        if (Array.isArray(games)) {
+            games.forEach(game => {
+                const result = game.won ? 'You won!' : 'You lost.';
+                const rewardText = game.reward > 0 ? `Reward: ${web3.utils.fromWei(game.reward, 'ether')} BNB` : '';
+                const playerMoveText = `Your Move: ${Move[game.playerMove]}`;
+
+                const listItem = document.createElement('li');
+                listItem.innerHTML = `${playerMoveText}, Bot's Move: ${Move[game.botMove]}, Bet Amount: ${web3.utils.fromWei(game.betAmount, 'ether')} BNB, ${result}, ${rewardText}`;
+                gameHistoryList.appendChild(listItem);
+            });
+        } else {
+            // Handle non-array response (e.g., when there are no games)
+            gameHistoryList.innerHTML = 'No game history available.';
+        }
+    } catch (error) {
+        console.error('Error:', error);
+    }
+}
+function updateGameHistory(playerMove, botMove, result) {
+    // Create a list item to represent the game result
+    const gameResultItem = document.createElement("li");
+
+    // Set the text content based on the result
+    gameResultItem.textContent = `Player chose ${playerMove}, Bot chose ${botMove}. Result: ${result}`;
+
+    // Get the game history element by id
+    const gameHistory = document.getElementById("gameHistory");
+
+    // Append the game result to the game history
+    gameHistory.appendChild(gameResultItem);
+}
+
+        window.onload = async () => {
+            const web3Loaded = await loadWeb3();
+            if (web3Loaded) {
+                await loadContract();
+                await loadAccount();
+                getBalance(); // Load and display the user's balance
+                loadGameHistory();
+				updateSenderAddress();
+            } else {
+                console.error('Web3 not found. Please install MetaMask.');
+            }
+        }
+		// Initialize Web3.js and update the sender's address
+async function initWeb3() {
+    if (typeof window.ethereum !== 'undefined') {
+        window.web3 = new Web3(window.ethereum);
+        try {
+            // Request account access if not already granted
+            await window.ethereum.enable();
+            updateSenderAddress();
+        } catch (error) {
+            console.error('Access to MetaMask denied.');
+        }
+    } else {
+        console.error('Web3 is not available in your browser. You should consider using MetaMask.');
+    }
+}
+
+// Update the sender's address in the HTML
+async function updateSenderAddress() {
+    try {
+        // Get the sender's address using Web3.js
+        const accounts = await web3.eth.getAccounts();
+        const senderAddress = accounts[0]; // The first account in the list
+
+        // Update the HTML element with the sender's address
+        const senderAddressElement = document.getElementById('senderAddress');
+        senderAddressElement.textContent = `Sender Address: ${senderAddress}`;
+    } catch (error) {
+        console.error('Error:', error);
+    }
+}
+
+// Handle the button click event to connect to MetaMask
+document.getElementById('connectButton').addEventListener('click', async function () {
+    await initWeb3();
+});
+
+    </script>
+</head>
+<body>
+	<div id="senderAddress">Sender Address: Not Connected</div>
+    <h1>Rock-Paper-Scissors Game</h1>
+    
+    <!-- Connect to MetaMask button and display user's balance -->
+    <div>
+        <button onclick="loadAccount()" id = "connectButton">Connect to MetaMask</button>
+        <span id="userBalance">Balance: 0 BNB</span>
+    </div>
+
+    <div>
+        <h2>Choose Your Move</h2>
+        <button onclick="playGame(1)">Rock</button>
+        <button onclick="playGame(2)">Paper</button>
+        <button onclick="playGame(3)">Scissors</button>
+    </div>
+    
+    <h2>Game History</h2>
+	<!-- Display game history here -->
+<ul id="gameHistory"></ul>
+
+    <ul id="gameHistoryList">
+        <!-- Display game history here -->
+    </ul>
+</body>
+</html>
